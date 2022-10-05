@@ -27,29 +27,31 @@ typedef unsigned int ee_uint32;
 #define BLOCk_SECTOR_NUM 
 
 /* 返回第x扇区的地址 */
-#define SECTORS(x) ((x) * SECTOR_SIZE)
+#define SECTORS(x) (ee_uint32)((x) * SECTOR_SIZE)
 /* 返回第x块的地址 */
-#define BLOCKS(x)  ((x) * BLOCk_SECTOR_NUM * SECTOR_SIZE)
+#define BLOCKS(x)  (ee_uint32)((x) * BLOCk_SECTOR_NUM * SECTOR_SIZE)
 
 /* 函数类型 void (*) (uint32 flashAddr, uint8* dataAddr, uint16 num) */
-#define flashWirte 
-#define flashRead  
+#define e_flashWrite 
+#define e_flashRead  
 
 /* 函数原型 void (*) (uint32_t flashAddr) */
-#define flashEraseASector  
+#define e_flashEraseASector  
 
 typedef struct
 {
 	/* 数据索引区首地址 */
-	ee_uint32 IndexStartAddr;
+	ee_uint32 indexStartAddr;
+	/* 数据索引重写区首地址 */
+	ee_uint32 indexOverwriteAddr;
 	/* 数据索引交换区首地址 */
-	ee_uint32 IndexSwapStartAddr;
+	ee_uint32 indexSwapStartAddr;
 	/* 数据区首地址 */
 	ee_uint32 dataStartAddr;
 	/* 数据交换区首地址 */
 	ee_uint32 dataSwapStartAddr;
 	/* 数据索引区总大小(单位:扇区) */
-	ee_uint16 IndexRegionSize;
+	ee_uint16 indexRegionSize;
 	/* 数据区总大小(单位:扇区) */
 	ee_uint16 dataRegionSize;
 }flash_MemMang_t;
@@ -63,6 +65,9 @@ typedef enum
 	DATA1,
 	// 用户将变量名添加到下面
 	G_MYSENSORDATA,
+
+	// DATA_NUM用于标识flash中一共存了多少个数据(不允许删改)
+	DATA_NUM,
 	
 }variableLists;
 
