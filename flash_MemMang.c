@@ -19,6 +19,7 @@
 /* 数据状态 */
 #define DATA_EMPTY         ((ee_uint16)0xFFFF)
 #define DATA_INVALID       ((ee_uint16)0x00FF)
+#define DATA_HALFVALID     ((ee_uint16)0x000F)
 #define DATA_VALID         ((ee_uint16)0x0000)
 
 /* 数据索引结构 */
@@ -28,7 +29,7 @@ typedef struct
 	ee_uint16 dataStatus;
 	/* 当前数据大小 */
 	ee_uint16 dataSize;
-	/* 当前数据在数据区的地址 */
+	/* 当前数据在数据区的地址(相对于dataStartAddr的偏移地址) */
 	ee_uint16 dataAddr;
 	/* 当前数据被重写的地址，默认为0xFFFF */
 	ee_uint16 dataOverwriteAddr;
@@ -38,7 +39,7 @@ static ee_uint32 ee_getFreeAddrInDataRegion(flash_MemMang_t* pobj);
 static ee_uint32 ee_getFreeAddrInOverwriteArea(flash_MemMang_t* pobj);
 static void ee_countAreaPlusOne(flash_MemMang_t* pobj);
 static void ee_writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeIndexAddr, void* buf, ee_uint16 bufSize);
-static ee_uint32 ee_getLastIndexNotBeenOverwrittenAddr(flash_MemMang_t* pobj, variableLists dataId);
+static ee_uint32 ee_getLastIndexAddrThatNotBeenOverwritten(flash_MemMang_t* pobj, variableLists dataId);
 static ee_uint8 VerifyRegionFullyErased(flash_MemMang_t *pobj, ee_uint32 regionAddr);
 
 
@@ -110,35 +111,34 @@ ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize
 	/* 获取当前数据索引的信息 */
 	ee_flashRead(writeIndexAddr, (ee_uint8*)&currentdataIndex, sizeof(currentdataIndex));
 	
-	/* 当前数据非有效 */
-	if(currentdataIndex.dataStatus != DATA_VALID)
+	/* 当数据状态是valid或者invalid或者haldvalid都要向重写区重新写入新的数据索引 */
+		/* 如果状态为invalid或halfvaild说明上次写入时，单片机断电或者复位了 */
+	if(currentdataIndex.dataStatus != DATA_EMPTY)
 	{
-		/* 状态为empty，说明是第一次写入 */
-		if(currentdataIndex.dataStatus == DATA_EMPTY)
-		{
-			/* 将索引和数据写入 */
-			ee_writeIndexAndData(pobj, writeIndexAddr, buf, bufSize);
-		}
-		else /* 状态为invalid说明上次写入时，单片机断电或者复位了 */
-		{
-
-		}
-
-	}
-	else /* 当前数据是重新写入 */
-	{
-		ee_uint32 lastIndexAddr, overwriteFreeAddr;
+		/* NOTE: 若数据状态是invalid或halfvalid时，因为无法保证下一次在在索引区相同地址写入时，索引数据的大小和上次写入失败时是一样的，因此舍弃索引区的数据索引，在重写区重新写入 */
+		ee_uint32 lastIndexAddr, overwriteFreeAddr; // 支持扩展寻址空间到4GB
 
 		/* 首先找到最后一个没被重写的数据索引地址 */
-		lastIndexAddr = ee_getLastIndexNotBeenOverwrittenAddr(pobj, dataId);
+		lastIndexAddr = ee_getLastIndexAddrThatNotBeenOverwritten(pobj, dataId);
 		/* 再找到重写区空闲位置的地址 */
 		overwriteFreeAddr = ee_getFreeAddrInOverwriteArea(pobj);
 
-		/* 准备写入前，首先先把重写计数+1，避免写入时，单片机断电或复位导致数据没有写入成功 */
+		/* 准备写入前，首先先把重写计数+1，以防写入时单片机断电或复位导致数据没有写入成功 */
 		ee_countAreaPlusOne(pobj);
 
+		/* 将索引写入重写区 */
+		ee_writeIndexAndData(pobj, overwriteFreeAddr, buf, bufSize);
+
+		/* 最后将上一个索引的重写地址设置为当前刚刚写入的索引地址(一定是最后设置) */
+		/* 如果程序在这里中断(没有进函数)，重写区将会出现一个valid的数据索引但是没有人指向它(没有索引知道它的存在)，因此也会被程序当成一个无用索引而跳过 */
+		/* TODO:如果进进函数被中断了，此数据索引将荒废，不能再使用，直到下一次块交换的时候 */
+		ee_flashWrite(lastIndexAddr + sizeof(ee_dataIndex) - sizeof(currentdataIndex.dataOverwriteAddr), (ee_uint8*)&overwriteFreeAddr, sizeof(currentdataIndex.dataOverwriteAddr));
 	}
-	
+	else /* 状态为empty，说明是第一次写入 */
+	{
+		/* 将索引写入索引区 */
+		ee_writeIndexAndData(pobj, writeIndexAddr, buf, bufSize);
+	}
 
 	return 0;
 }
@@ -164,19 +164,23 @@ static void ee_writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeIndexAddr
 	dataIndex.dataOverwriteAddr = 0xFFFF;
 	ee_flashWrite(writeIndexAddr + sizeof(dataIndex.dataStatus), (ee_uint8*)&dataIndex.dataSize, sizeof(dataIndex) - sizeof(dataIndex.dataStatus));
 
+	/* 写入数据前，将当前数据索引设置为halfvalid状态 */
+	dataIndex.dataStatus = DATA_HALFVALID;
+
+	ee_flashWrite(writeIndexAddr, (ee_uint8*)&dataIndex, sizeof(dataIndex.dataStatus));
+
 	/* 将真正的数据写入数据区 */
-	ee_flashWrite(dataIndex.dataAddr, (ee_uint8*)buf, dataIndex.dataSize);
+	ee_flashWrite(pobj->dataStartAddr + dataIndex.dataAddr, (ee_uint8*)buf, dataIndex.dataSize);
 
 	/* 写入后，将当前数据索引设置为valid状态 */
 	dataIndex.dataStatus = DATA_VALID;
 
-	/* 写入当前状态 */
 	ee_flashWrite(writeIndexAddr, (ee_uint8*)&dataIndex, sizeof(dataIndex.dataStatus));
 }
 /**
  * @brief: 获取最后一个没有被重写的索引地址
  */
-static ee_uint32 ee_getLastIndexNotBeenOverwrittenAddr(flash_MemMang_t* pobj, variableLists dataId)
+static ee_uint32 ee_getLastIndexAddrThatNotBeenOverwritten(flash_MemMang_t* pobj, variableLists dataId)
 {
 	ee_dataIndex dataIndex;
 	ee_uint32 currentIndexAddr;
@@ -191,7 +195,7 @@ static ee_uint32 ee_getLastIndexNotBeenOverwrittenAddr(flash_MemMang_t* pobj, va
 		ee_flashRead(currentIndexAddr, (ee_uint8*)&dataIndex, sizeof(dataIndex));
 
 		/* 获取下一个索引的地址 */
-		nextIndexAddr = dataIndex.dataOverwriteAddr;
+		nextIndexAddr = pobj->indexStartAddr + dataIndex.dataOverwriteAddr;
 	}while(nextIndexAddr != (ee_uint16)0xFFFF);
 
 	return currentIndexAddr;
@@ -200,11 +204,12 @@ static ee_uint32 ee_getLastIndexNotBeenOverwrittenAddr(flash_MemMang_t* pobj, va
 /**
  * @brief: 获取数据区空闲的地址
  */
+// TODO: BUGS 应该返回uint16，因为ee_dataIndex中数据为16位(检查其他函数是不是也有此问题)
 static ee_uint32 ee_getFreeAddrInDataRegion(flash_MemMang_t* pobj)
 {
 	ee_dataIndex lastDataIndex;
+	ee_uint32 freeAddr = 0;
 	ee_uint32 lastIndexAddr = 0;
-	ee_uint32 freeAddr = pobj->dataStartAddr;
 
 	/* 确保变量表中有变量 */
 	if(DATA_NUM != 0)
@@ -219,8 +224,9 @@ static ee_uint32 ee_getFreeAddrInDataRegion(flash_MemMang_t* pobj)
 		ee_flashRead(lastIndexAddr, (ee_uint8*)&lastDataIndex, sizeof(lastDataIndex));
 
 		/* 如果最后一个数据索引的状态有效，则获得最后一个数据索引数据的地址，否则代表最后一个数据地址无用， 继续从后往前寻找有效的数据索引 */
-		if(lastDataIndex.dataStatus == DATA_VALID)
+		if((lastDataIndex.dataStatus == DATA_VALID) || (lastDataIndex.dataStatus == DATA_HALFVALID))
 		{
+			/* halfvalid代表我上次在数据区写着写着，你把我单片机给扬喽，因此这块的数据我也不要嘞 */
 			freeAddr = lastDataIndex.dataAddr + lastDataIndex.dataSize;
 
 			break;
@@ -229,6 +235,7 @@ static ee_uint32 ee_getFreeAddrInDataRegion(flash_MemMang_t* pobj)
 		/* 避免(indexStartAddr为0时)减法导致的数据溢出 */
 		if(lastIndexAddr == pobj->indexStartAddr) break;
 
+		/* 地址递减 */
 		lastIndexAddr -= sizeof(lastDataIndex);
 	}
 
@@ -246,13 +253,14 @@ static ee_uint32 ee_getFreeAddrInDataRegion(flash_MemMang_t* pobj)
 			/* 获取重写区最后一个索引的数据 */
 			ee_flashRead(lastIndexAddr, (ee_uint8*)&lastDataIndex, sizeof(lastDataIndex));
 
-			/* 如果最后一个数据索引的状态有效，则获得最后一个数据索引数据的地址，否则代表最后一个数据地址无用， 继续从后往前寻找有效的数据索引 */
-			if(lastDataIndex.dataStatus == DATA_VALID)
+			/* 如果最后一个数据索引的状态处于有效或者半有效状态 */
+			if((lastDataIndex.dataStatus == DATA_VALID) || (lastDataIndex.dataStatus == DATA_HALFVALID))
 			{
-				/* 若重写区最后一个有效的数据索引指向数据区的地址大于索引区最大指向数据区的地址 */
+				/* 重写区最后一个有效的数据索引指向数据区的地址，大于索引区最大指向数据区的地址 */
 				if(freeAddr < (lastDataIndex.dataAddr + lastDataIndex.dataSize))
 				{
 					/* 说明当前索引指向的地址后面是空闲的数据空间 */
+					/* 半有效状态，说明在向数据区写入数据时单片机终止运行，这里的做法就是直接抛弃数据区的这一片存储空间 */
 					freeAddr = lastDataIndex.dataAddr + lastDataIndex.dataSize;
 				}
 
