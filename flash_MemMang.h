@@ -20,6 +20,9 @@
 typedef unsigned char ee_uint8;
 typedef unsigned short ee_uint16;
 typedef unsigned int ee_uint32;
+typedef char ee_int8;
+typedef short ee_int16;
+typedef int ee_int32;
 
 /* 当前flash一个扇区的大小 */
 #define SECTOR_SIZE 4096
@@ -31,19 +34,22 @@ typedef unsigned int ee_uint32;
 /* 返回第x块的地址 */
 #define BLOCKS(x)  (ee_uint32)((x) * BLOCk_SECTOR_NUM * SECTOR_SIZE)
 
+extern void a(ee_uint32 flashAddr, ee_uint8* dataAddr, ee_uint16 num);
+extern void b(ee_uint32 addr);
+
 /* 函数类型 void (*) (uint32 flashAddr, uint8* dataAddr, uint16 num) */
-#define e_flashWrite 
-#define e_flashRead  
+#define ee_flashWrite a
+#define ee_flashRead  a
 
 /* 函数原型 void (*) (uint32_t flashAddr) */
-#define e_flashEraseASector  
+#define ee_flashEraseASector b
 
 typedef struct
 {
 	/* 数据索引区首地址 */
 	ee_uint32 indexStartAddr;
 	/* 数据索引重写区首地址 */
-	ee_uint32 indexOverwriteAddr;
+	ee_uint32 overwriteAddr;
 	/* 数据索引交换区首地址 */
 	ee_uint32 indexSwapStartAddr;
 	/* 数据区首地址 */
@@ -54,6 +60,8 @@ typedef struct
 	ee_uint16 indexRegionSize;
 	/* 数据区总大小(单位:扇区) */
 	ee_uint16 dataRegionSize;
+	/* 索引重写计数区总大小(单位:字节) */
+	ee_uint16 overwriteCountAreaSize;
 }flash_MemMang_t;
 
 
@@ -72,6 +80,6 @@ typedef enum
 }variableLists;
 
 ee_uint8 readDataFromFlash(flash_MemMang_t* pobj, void* dataAddr, variableLists dataId);
-ee_uint8 writeDataToFlash(flash_MemMang_t* pobj, void* dataAddr, ee_uint16 dataSize, variableLists dataId);
+ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize, variableLists dataId);
 #endif /* __FLASH_MEMMANG_H_ */
 
