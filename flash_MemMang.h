@@ -46,11 +46,11 @@ extern void b(ee_uint32 addr);
 
 typedef struct
 {
-	/* 数据索引区首地址 */
+	/* 索引区首地址 */
 	ee_uint32 indexStartAddr;
-	/* 数据索引重写区首地址 */
+	/* 索引重写区首地址 */
 	ee_uint32 overwriteAddr;
-	/* 数据索引交换区首地址 */
+	/* 索引交换区首地址 */
 	ee_uint32 indexSwapStartAddr;
 	/* 数据区首地址 */
 	ee_uint32 dataStartAddr;
@@ -58,6 +58,8 @@ typedef struct
 	ee_uint32 dataSwapStartAddr;
 	/* 数据索引区总大小(单位:扇区) */
 	ee_uint16 indexRegionSize;
+	/* 索引区总大小(单位:扇区) */
+	ee_uint16 indexAreaSize;
 	/* 数据区总大小(单位:扇区) */
 	ee_uint16 dataRegionSize;
 	/* 索引重写计数区总大小(单位:字节) */
@@ -79,7 +81,7 @@ typedef enum
 	
 }variableLists;
 
-ee_uint8 readDataFromFlash(flash_MemMang_t* pobj, void* dataAddr, variableLists dataId);
+ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists dataId);
 ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize, variableLists dataId);
 #endif /* __FLASH_MEMMANG_H_ */
 
