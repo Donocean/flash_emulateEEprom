@@ -25,7 +25,7 @@ typedef short ee_int16;
 typedef int ee_int32;
 
 /* 当前flash一个扇区的大小 */
-#define SECTOR_SIZE 4096
+#define SECTOR_SIZE 
 /* 当前flash一个块有多少个扇区 */
 #define BLOCk_SECTOR_NUM 
 
@@ -34,15 +34,12 @@ typedef int ee_int32;
 /* 返回第x块的地址 */
 #define BLOCKS(x)  (ee_uint32)((x) * BLOCk_SECTOR_NUM * SECTOR_SIZE)
 
-extern void a(ee_uint32 flashAddr, ee_uint8* dataAddr, ee_uint16 num);
-extern void b(ee_uint32 addr);
-
 /* 函数类型 void (*) (uint32 flashAddr, uint8* dataAddr, uint16 num) */
-#define ee_flashWrite a
-#define ee_flashRead  a
+#define ee_flashWrite 
+#define ee_flashRead  
 
 /* 函数原型 void (*) (uint32_t flashAddr) */
-#define ee_flashEraseASector b
+#define ee_flashEraseASector 
 
 typedef struct
 {
@@ -70,7 +67,7 @@ typedef struct
 /* 想保存变量到flash时，首先在下面枚举中添加变量名 */
 typedef enum
 {
-	// DATA0,DATA1只是示例，实际使用将17-21行全部删除
+	// DATA0,DATA1只是示例，实际使用将70-74行全部删除
 	DATA0,
 	DATA1,
 	// 用户将变量名添加到下面
@@ -78,9 +75,9 @@ typedef enum
 
 	// DATA_NUM用于标识flash中一共存了多少个数据(不允许删改)
 	DATA_NUM,
-	
 }variableLists;
 
+void ee_flashInit(flash_MemMang_t* pobj,ee_uint32 indexStartAddr,ee_uint32 indexSwapStartAddr,ee_uint16 indexRegionSize,ee_uint16 indexSize,ee_uint32 dataStartAddr,ee_uint32 dataSwapStartAddr,ee_uint16 dataRegionSize);
 ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists dataId);
 ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize, variableLists dataId);
 #endif /* __FLASH_MEMMANG_H_ */
