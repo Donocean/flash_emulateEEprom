@@ -25,7 +25,7 @@ typedef short ee_int16;
 typedef int ee_int32;
 
 /* 当前flash一个扇区的大小 */
-#define SECTOR_SIZE 
+#define SECTOR_SIZE 4
 /* 当前flash一个块有多少个扇区 */
 #define BLOCk_SECTOR_NUM 
 
@@ -34,12 +34,16 @@ typedef int ee_int32;
 /* 返回第x块的地址 */
 #define BLOCKS(x)  (ee_uint32)((x) * BLOCk_SECTOR_NUM * SECTOR_SIZE)
 
-/* 函数类型 void (*) (uint32 flashAddr, uint8* dataAddr, uint16 num) */
-#define ee_flashWrite 
-#define ee_flashRead  
+extern void a(ee_uint32 flashAddr, ee_uint8* dataAddr, ee_uint16 num);
+extern void b(ee_uint32 flashAddr);
 
-/* 函数原型 void (*) (uint32_t flashAddr) */
-#define ee_flashEraseASector 
+
+/* 函数类型 void (*) (uint32 flashAddr, uint8* dataAddr, uint16 num) */
+#define ee_flashWrite a
+#define ee_flashRead  a
+
+/* 函数原型 void (*) (uint32 flashAddr) */
+#define ee_flashEraseASector b
 
 typedef struct
 {

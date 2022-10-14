@@ -39,7 +39,7 @@ static void flashMemMangHandle_Init(flash_MemMang_t* pobj,ee_uint32 indexStartAd
 static void countAreaPlusOne(flash_MemMang_t* pobj);
 static ee_uint32 getFreeAddrInDataRegion(flash_MemMang_t* pobj);
 static ee_uint32 getFreeAddrInOverwriteArea(flash_MemMang_t* pobj);
-static void writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeIndexAddr, void* buf, ee_uint16 bufSize);
+static void writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeDataAddr, ee_uint32 writeIndexAddr, void* buf, ee_uint16 bufSize);
 static ee_uint32 getLastIndexAddrThatNotBeenOverwritten(flash_MemMang_t* pobj, variableLists dataId);
 static void eraseRegion(flash_MemMang_t *pobj, ee_uint32 regionAddr);
 static ee_uint8 verifyRegionFullyErased(flash_MemMang_t *pobj, ee_uint32 regionAddr);
@@ -188,6 +188,7 @@ static void flashMemMangHandle_Init(flash_MemMang_t* pobj,       \
 ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize, variableLists dataId)
 {
 	ee_dataIndex currentdataIndex;
+	ee_uint32 dataRegionFreeAddr = 0;
 	ee_uint32 writeIndexAddr = pobj->indexStartAddr + sizeof(ee_dataIndex) * dataId;
 
 	/* 写入的数据超过索引区，直接返回 */
@@ -211,6 +212,9 @@ ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize
 		}
 	}
 
+	/* 获得数据区空闲区地址 */
+	dataRegionFreeAddr = getFreeAddrInDataRegion(pobj);
+
 	/* 获取当前数据索引的信息 */
 	ee_flashRead(writeIndexAddr, (ee_uint8*)&currentdataIndex, sizeof(currentdataIndex));
 	
@@ -220,30 +224,51 @@ ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize
 	{
 		/* NOTE: 若数据状态是invalid或halfvalid时，因为无法保证下一次在在索引区相同地址写入时，
 		 * 索引数据的大小和上次写入失败时是一样的，因此舍弃索引区的数据索引，在重写区重新写入 */
-		ee_uint32 lastIndexAddr, overwriteFreeAddr, overwriteBiasAddr; // 支持扩展寻址空间到4GB
+		ee_uint32 lastIndexAddr, overwriteAreaFreeAddr, overwriteAreaBiasAddr; // 支持扩展寻址空间到4GB
 
 		/* 首先找到最后一个没被重写的数据索引地址 */
 		lastIndexAddr = getLastIndexAddrThatNotBeenOverwritten(pobj, dataId);
 
 		/* 再找到重写区空闲位置的地址 */
-		overwriteFreeAddr = getFreeAddrInOverwriteArea(pobj);
+		overwriteAreaFreeAddr = getFreeAddrInOverwriteArea(pobj);
+
 		/* 写入索引的重写地址是偏移地址 */
-		overwriteBiasAddr = overwriteFreeAddr - pobj->overwriteAddr;
+		overwriteAreaBiasAddr = overwriteAreaFreeAddr - pobj->overwriteAddr;
+
+		/* 若重写区或数据区溢出 */
+		if((overwriteAreaFreeAddr + sizeof(ee_dataIndex)) > (pobj->indexStartAddr + SECTORS(pobj->indexRegionSize)) ||\
+		   (dataRegionFreeAddr + bufSize) > SECTORS(pobj->dataRegionSize))
+		{
+			/* 交换活动空间 */
+			swapRegion(pobj);
+
+			/* 重新获得数据区空闲地址 */
+			dataRegionFreeAddr = getFreeAddrInDataRegion(pobj);
+
+			/* 刚交换完空间， 最后一个没被重写的数据索引地址即索引区的数据索引 */
+			lastIndexAddr = writeIndexAddr;
+
+			/* 重置重写区写入地址为起始地址，因为刚交换好区域，重写区空闲地址就是重写区起始地址 */
+			overwriteAreaFreeAddr  = pobj->overwriteAddr;
+
+			/* 重写区第一个数据地址偏移为0 */
+			overwriteAreaBiasAddr = 0;
+		}
 
 		/* 准备写入前，首先先把重写计数+1，以防写入时单片机断电或复位导致数据没有写入成功 */
 		countAreaPlusOne(pobj);
 
 		/* 将索引写入重写区，数据写入数据区 */
-		writeIndexAndData(pobj, overwriteFreeAddr, buf, bufSize);
+		writeIndexAndData(pobj, dataRegionFreeAddr, overwriteAreaFreeAddr, buf, bufSize);
 
 		/* 最后将上一个索引的重写地址设置为当前刚刚写入的索引地址(一定是最后设置) */
-		/* 如果程序在这里中断(没有进函数)，重写区将会出现一个valid的数据索引但是没有人指向它(没有索引知道它的存在)，因此也会被程序当成一个无用索引而跳过 */
-		ee_flashWrite(lastIndexAddr + sizeof(ee_dataIndex) - sizeof(currentdataIndex.dataOverwriteAddr), (ee_uint8*)&overwriteBiasAddr, sizeof(currentdataIndex.dataOverwriteAddr));
+		/* 如果程序在这里中断(没有进函数)，重写区将会出现一个valid的数据索引但是没有人指向它(没有索引知道它的存在)，因此也会被程序当成一个无效索引而跳过 */
+		ee_flashWrite(lastIndexAddr + sizeof(ee_dataIndex) - sizeof(currentdataIndex.dataOverwriteAddr), (ee_uint8*)&overwriteAreaBiasAddr, sizeof(currentdataIndex.dataOverwriteAddr));
 	}
 	else /* 状态为empty，说明是第一次写入 */
 	{
 		/* 将索引写入索引区 */
-		writeIndexAndData(pobj, writeIndexAddr, buf, bufSize);
+		writeIndexAndData(pobj, dataRegionFreeAddr, writeIndexAddr, buf, bufSize);
 	}
 
 	return 0;
@@ -297,7 +322,7 @@ ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists da
 	return 0;
 }
 
-static void writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeIndexAddr, void* buf, ee_uint16 bufSize)
+static void writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeDataAddr, ee_uint32 writeIndexAddr, void* buf, ee_uint16 bufSize)
 {
 	ee_dataIndex dataIndex;
 	/* 写入前，先将当前数据索引设置为invalid状态 */
@@ -306,9 +331,9 @@ static void writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeIndexAddr, v
 	/* 写入当前状态 */
 	ee_flashWrite(writeIndexAddr, (ee_uint8*)&dataIndex, sizeof(dataIndex.dataStatus));
 
-	/* 现在将剩余数据索引写入 */
+	/* 现在将剩余结构成员写入 */
 	dataIndex.dataSize = bufSize;
-	dataIndex.dataAddr = getFreeAddrInDataRegion(pobj);
+	dataIndex.dataAddr = writeDataAddr;
 	dataIndex.dataOverwriteAddr = 0xFFFF;
 	ee_flashWrite(writeIndexAddr + sizeof(dataIndex.dataStatus), (ee_uint8*)&dataIndex.dataSize, sizeof(dataIndex) - sizeof(dataIndex.dataStatus));
 
@@ -356,9 +381,9 @@ static ee_uint32 getLastIndexAddrThatNotBeenOverwritten(flash_MemMang_t* pobj, v
  */
 static ee_uint32 getFreeAddrInDataRegion(flash_MemMang_t* pobj)
 {
-	ee_dataIndex lastDataIndex;
 	ee_uint32 freeAddr = 0;
 	ee_uint32 lastIndexAddr = 0;
+	ee_dataIndex lastDataIndex;
 
 	/* 确保变量表中有变量 */
 	if(DATA_NUM != 0)
@@ -381,7 +406,7 @@ static ee_uint32 getFreeAddrInDataRegion(flash_MemMang_t* pobj)
 			break;
 		}
 
-		/* 避免(indexStartAddr为0时)减法导致的数据溢出 */
+		/* 避免(indexStartAddr为0时)减法导致的数据类型溢出 */
 		if(lastIndexAddr == pobj->indexStartAddr) break;
 
 		/* 地址递减 */
@@ -686,7 +711,6 @@ static void swapRegion(flash_MemMang_t* pobj)
 			/* 将区的状态设置为verified */
 			regionStatus = REGION_VERIFIED;
 			ee_flashWrite(pobj->indexSwapStartAddr - 4, (ee_uint8*)&regionStatus, 4);
-			ee_flashWrite(pobj->dataSwapStartAddr, (ee_uint8*)&regionStatus, 4);
 
 			/* 验证状态之间进行交换 */
 		case REGION_VERIFIED:
