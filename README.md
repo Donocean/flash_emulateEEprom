@@ -10,14 +10,15 @@
 	- `ee_uint8 ee_writeDataToFlash();`：写数据
 - 容易维护，你只需要维护一个枚举变量表`variableLists`，通过此表读写flash中的数据
 - 可以**随意修改**已经存入flash中**数据的大小、内容**
+- 支持**所有可以按字节写入的flash**(nor flash)，你可以使用此程序管理spi_flash或其他单片机芯片中的片内flash
 
 ### 如何开始使用？
 
 首先进入头文件，根据注释将**四个宏**填写完整
-- `SECTOR_SIZE`:  当前flash一个扇区(flash的最小存储结构)容量大小
+- `SECTOR_SIZE`:  当前flash一个扇区(flash的最小存储单元)容量大小
 - `ee_flashWrite`: flash写操作驱动函数名
 - `ee_flashRead`:  flash读操作驱动函数名
-- `ee_flashEraseASector`: flash擦除一个扇区(flash的最小存储结构)驱动函数名
+- `ee_flashEraseASector`: flash擦除一个扇区(flash的最小存储单元)驱动函数名
 
 可填写的宏（不填不影响函数运行）
 
