@@ -2,8 +2,8 @@
  * @file spi_flash_MemMang.c
  * @author Donocean (1184427366@qq.com)
  * @brief 轻量化的用于 flash 的内存管理
- * @version 0.1
- * @date 2022-02-24
+ * @version 1.0
+ * @date 2022-10-20
  * 
  * @copyright Copyright (c) 2022, Donocean
  */
@@ -89,6 +89,10 @@ void ee_flashInit(flash_MemMang_t* pobj,       \
 					/* 交换索引区域 */
 					swapRegion(pobj);
 					break;
+					
+				default:
+					/* 异常情况直接复位flash */
+					goto resetFlash;
 			}
 			break;
 			
@@ -97,16 +101,20 @@ void ee_flashInit(flash_MemMang_t* pobj,       \
 			switch(swapRegionStatus)
 			{
 				case REGION_ERASING:
-					/* 第一次使用 */
+					/* 第一次使用擦除所有要用的区域 */
 					flashMemMangHandle_Init(pobj, indexStartAddr, indexSwapStartAddr, indexRegionSize, indexSize, dataStartAddr, dataSwapStartAddr, dataRegionSize);
 
-					/* 第一次使用擦除所有要用的区域 */
-					eraseRegion(pobj, indexStartAddr);
-					eraseRegion(pobj, indexSwapStartAddr);
-					eraseRegion(pobj, dataStartAddr);
-					eraseRegion(pobj, dataSwapStartAddr);
+					/* 擦除活动区 */
+					eraseRegion(pobj, pobj->indexStartAddr);
+					eraseRegion(pobj, pobj->dataStartAddr);
 
-					if(!verifyRegionFullyErased(pobj,indexStartAddr))
+					/* 擦除交换区 */
+					eraseRegion(pobj, pobj->indexSwapStartAddr);
+					eraseRegion(pobj, pobj->dataSwapStartAddr);
+
+					/* 验证是否完全擦除 */
+					if(!verifyRegionFullyErased(pobj,pobj->indexStartAddr) && \
+                       !verifyRegionFullyErased(pobj,pobj->dataStartAddr))
 					{
 						regionStatus = REGION_ACTIVE;
 
@@ -118,6 +126,10 @@ void ee_flashInit(flash_MemMang_t* pobj,       \
 					/* 活动在交换区 */
 					flashMemMangHandle_Init(pobj, indexSwapStartAddr, indexStartAddr, indexRegionSize, indexSize, dataStartAddr, dataSwapStartAddr, dataRegionSize);
 					break;
+
+				default:
+					/* 异常情况直接复位flash */
+					goto resetFlash;
 			}
 
 		case REGION_COPY:
@@ -131,17 +143,22 @@ void ee_flashInit(flash_MemMang_t* pobj,       \
 			}
 			break;
 
+resetFlash:
 		default:
 			/* 如果都不是上面的状态，说明区域状态异常，初始化为最初的状态 */
 			flashMemMangHandle_Init(pobj, indexStartAddr, indexSwapStartAddr, indexRegionSize, indexSize, dataStartAddr, dataSwapStartAddr, dataRegionSize);
 
-			/* 擦除所有要用的区域 */
-			eraseRegion(pobj, indexStartAddr);
-			eraseRegion(pobj, indexSwapStartAddr);
-			eraseRegion(pobj, dataStartAddr);
-			eraseRegion(pobj, dataSwapStartAddr);
+			/* 擦除活动区 */
+			eraseRegion(pobj, pobj->indexStartAddr);
+			eraseRegion(pobj, pobj->dataStartAddr);
 
-			if(!verifyRegionFullyErased(pobj,indexStartAddr))
+			/* 擦除交换区 */
+			eraseRegion(pobj, pobj->indexSwapStartAddr);
+			eraseRegion(pobj, pobj->dataSwapStartAddr);
+
+			/* 验证是否完全擦除 */
+			if(!verifyRegionFullyErased(pobj,pobj->indexStartAddr) && \
+               !verifyRegionFullyErased(pobj,pobj->dataStartAddr))
 			{
 				regionStatus = REGION_ACTIVE;
 
@@ -192,7 +209,7 @@ ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize
 	ee_uint32 writeIndexAddr = pobj->indexStartAddr + sizeof(ee_dataIndex) * dataId;
 
 	/* 写入的数据超过索引区，直接返回 */
-	if(writeIndexAddr >= pobj->overwriteAddr)
+	if(writeIndexAddr >= (pobj->overwriteAddr - pobj->overwriteCountAreaSize))
 	{
 		return 1;
 	}
@@ -236,7 +253,7 @@ ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize
 		overwriteAreaBiasAddr = overwriteAreaFreeAddr - pobj->overwriteAddr;
 
 		/* 若重写区或数据区溢出 */
-		if((overwriteAreaFreeAddr + sizeof(ee_dataIndex)) > (pobj->indexStartAddr + SECTORS(pobj->indexRegionSize)) ||\
+		if((overwriteAreaFreeAddr + sizeof(ee_dataIndex)) > (pobj->indexStartAddr - 4 + SECTORS(pobj->indexRegionSize)) ||\
 		   (dataRegionFreeAddr + bufSize) > SECTORS(pobj->dataRegionSize))
 		{
 			/* 交换活动空间 */
@@ -246,7 +263,7 @@ ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize
 			dataRegionFreeAddr = getFreeAddrInDataRegion(pobj);
 
 			/* 刚交换完空间， 最后一个没被重写的数据索引地址即索引区的数据索引 */
-			lastIndexAddr = writeIndexAddr;
+			lastIndexAddr = pobj->indexStartAddr + sizeof(ee_dataIndex) * dataId;
 
 			/* 重置重写区写入地址为起始地址，因为刚交换好区域，重写区空闲地址就是重写区起始地址 */
 			overwriteAreaFreeAddr  = pobj->overwriteAddr;
@@ -280,7 +297,7 @@ ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists da
 	ee_uint32 readIndexAddr = pobj->indexStartAddr + sizeof(ee_dataIndex) * dataId;
 
 	/* 读取的数据超过索引区，直接返回 */
-	if(readIndexAddr >= pobj->overwriteAddr)
+	if(readIndexAddr >= (pobj->overwriteAddr - pobj->overwriteCountAreaSize))
 	{
 		return 1;
 	}
@@ -529,6 +546,8 @@ static ee_uint8 verifyRegionFullyErased(flash_MemMang_t *pobj, ee_uint32 regionA
 	/* 获取当前区的结束地址 */
 	if((pobj->indexStartAddr == regionAddr) || (pobj->indexSwapStartAddr == regionAddr))
 	{
+		regionAddr = regionAddr - 4;
+
 		regionEndAddr = regionAddr + SECTORS(pobj->indexRegionSize);
 	}
 	else
@@ -568,10 +587,14 @@ static void eraseRegion(flash_MemMang_t *pobj, ee_uint32 regionAddr)
 
 	if((pobj->indexStartAddr == regionAddr) || (pobj->indexSwapStartAddr == regionAddr))
 	{
+		/* 索引区(含区域状态，回到最初地址) */
+		regionAddr = regionAddr - 4;
+
 		regionEndAddr = regionAddr + SECTORS(pobj->indexRegionSize);
 	}
 	else
 	{
+		/* 数据区 */
 		regionEndAddr = regionAddr + SECTORS(pobj->dataRegionSize);
 	}
 
@@ -599,14 +622,14 @@ static void transferDataAndIndex(flash_MemMang_t* pobj, ee_dataIndex* pindex, ee
 		ee_uint8 data = 0;
 
 		/* 从满数据区中读出 */
-		ee_flashRead(pindex->dataAddr + pobj->dataStartAddr, &data, 1);
+		ee_flashRead(pobj->dataStartAddr + pindex->dataAddr + i, &data, 1);
 
 		/* 写入到新交换数据区 */
-		ee_flashWrite(*newDataAddr, &data, 1);
-
-		/* 地址递增 */
-		*newDataAddr += 1;
+		ee_flashWrite(pobj->dataSwapStartAddr + *newDataAddr + i, &data, 1);
 	}
+	
+	/* 地址递增，用作下一个数据索引的数据区起始地址 */
+	*newDataAddr += i;
 }
 
 static void swapData(flash_MemMang_t* pobj)
@@ -634,7 +657,7 @@ static void swapData(flash_MemMang_t* pobj)
 		{
 			if(readIndex.dataOverwriteAddr != (ee_uint16)0xFFFF)
 			{
-				/* 获取最后一个没被重写的索引 */
+				/* 获取当前索引的最后一个没被重写的地址 */
 				ee_uint32 lastIndexAddr = getLastIndexAddrThatNotBeenOverwritten(pobj, (variableLists)i);
 
 				/* 获取最后一个重写索引的信息 */
@@ -674,7 +697,7 @@ static void swapData(flash_MemMang_t* pobj)
 	ee_flashWrite(pobj->indexSwapStartAddr - 4, (ee_uint8*)&regionStatus, 4);
 
 	/* 擦除交换区 */
-	eraseRegion(pobj, pobj->indexSwapStartAddr - 4);
+	eraseRegion(pobj, pobj->indexSwapStartAddr);
 	eraseRegion(pobj, pobj->dataSwapStartAddr);
 }
 
@@ -704,7 +727,7 @@ static void swapRegion(flash_MemMang_t* pobj)
 			{
 				/* 如果验证块没有被完全擦除则进行块的擦除 */
 				/* 如果在擦除时，单片机复位，区的状态还是处于erased */
-				eraseRegion(pobj, pobj->indexSwapStartAddr - 4);
+				eraseRegion(pobj, pobj->indexSwapStartAddr);
 				eraseRegion(pobj, pobj->dataSwapStartAddr);
 			}
 

@@ -1,8 +1,9 @@
 /**
+ * @file spi_flash_MemMang.c
  * @author Donocean (1184427366@qq.com)
  * @brief 用于 flash 的内存管理
- * @version 0.1
- * @date 2022-02-24
+ * @version 1.0
+ * @date 2022-10-20
  * 
  * @copyright Copyright (c) 2022, Donocean
  */
@@ -25,7 +26,7 @@ typedef short ee_int16;
 typedef int ee_int32;
 
 /* 当前flash一个扇区的大小 */
-#define SECTOR_SIZE 4
+#define SECTOR_SIZE 
 /* 当前flash一个块有多少个扇区 */
 #define BLOCk_SECTOR_NUM 
 
@@ -34,16 +35,12 @@ typedef int ee_int32;
 /* 返回第x块的地址 */
 #define BLOCKS(x)  (ee_uint32)((x) * BLOCk_SECTOR_NUM * SECTOR_SIZE)
 
-extern void a(ee_uint32 flashAddr, ee_uint8* dataAddr, ee_uint16 num);
-extern void b(ee_uint32 flashAddr);
-
-
 /* 函数类型 void (*) (uint32 flashAddr, uint8* dataAddr, uint16 num) */
-#define ee_flashWrite a
-#define ee_flashRead  a
+#define ee_flashWrite 
+#define ee_flashRead  
 
 /* 函数原型 void (*) (uint32 flashAddr) */
-#define ee_flashEraseASector b
+#define ee_flashEraseASector 
 
 typedef struct
 {
@@ -66,7 +63,6 @@ typedef struct
 	/* 索引重写计数区总大小(单位:字节) */
 	ee_uint16 overwriteCountAreaSize;
 }flash_MemMang_t;
-
 
 /* 想保存变量到flash时，首先在下面枚举中添加变量名 */
 typedef enum
