@@ -45,15 +45,18 @@ static void eraseRegion(flash_MemMang_t *pobj, ee_uint32 regionAddr);
 static ee_uint8 verifyRegionFullyErased(flash_MemMang_t *pobj, ee_uint32 regionAddr);
 static void swapRegion(flash_MemMang_t* pobj);
 
-
-// flash管理指针
-// 索引区起始地址
-// 索引交换区起始地址
-// 索引区总大小
-// 索引区大小(用于定位重写区地址) 要小于indexRegionSize
-// 数据区起始地址
-// 数据交换区起始地址
-// 数据区总大小(单位：扇区)
+/**
+ * @brief 格式化传入函数地址flash
+ *
+ * @param pobj                 flash管理对象指针
+ * @param indexStartAddr       总索引区起始地址
+ * @param indexSwapStartAddr   交换总索引区起始地址
+ * @param indexRegionSize      总索引区大小(单位：扇区)
+ * @param indexSize            索引区大小(详见README图例，要小于indexRegionSize)
+ * @param dataStartAddr        数据区起始地址
+ * @param dataSwapStartAddr    交换数据区起始地址
+ * @param dataRegionSize       数据区大小(单位：扇区)
+ */
 void ee_flashInit(flash_MemMang_t* pobj,       \
                   ee_uint32 indexStartAddr,    \
 				  ee_uint32 indexSwapStartAddr,\
@@ -202,6 +205,19 @@ static void flashMemMangHandle_Init(flash_MemMang_t* pobj,       \
 	pobj->dataSwapStartAddr = dataSwapStartAddr;
 }
 
+/**
+ * @brief           写数据到flash
+ *
+ * @param pobj      flash管理对象指针
+ * @param buf       写入数据的地址
+ * @param bufSize   数据大小
+ * @param dataId    要写入的数据id(详见头文件枚举类型variableLists)
+ *
+ * @retval 
+ *         0: 写入成功
+ *         1: 写入的数据超过索引区
+ *         2: 当前写入的数据id，没有遵循variableLists中的顺序写入
+ */
 ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize, variableLists dataId)
 {
 	ee_dataIndex currentdataIndex;
@@ -291,6 +307,20 @@ ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize
 	return 0;
 }
 
+
+/**
+ * @brief           从flash读取数据
+ *
+ * @param pobj      flash管理对象指针
+ * @param buf       读取数据的地址
+ * @param dataId    要读取的数据id(详见头文件枚举类型variableLists)
+ *
+ * @retval 
+ *         0: 读取成功
+ *         1: 读取的数据超过索引区
+ *         2: 当前读取的数据id没有写入过
+ *         3: 当前读取的数据id不是有效的
+ */
 ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists dataId)
 {
 	ee_dataIndex readIndex;
@@ -339,6 +369,14 @@ ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists da
 	return 0;
 }
 
+/**
+ * @brief 将索引结构和数据写入flash
+ *
+ * @param writeDataAddr 将要写入的数据区目的地址
+ * @param writeIndexAddr 将要希尔的索引区地址
+ * @param buf 写入数据的指针
+ * @param bufSize 写入数据的大小
+ */
 static void writeIndexAndData(flash_MemMang_t* pobj, ee_uint32 writeDataAddr, ee_uint32 writeIndexAddr, void* buf, ee_uint16 bufSize)
 {
 	ee_dataIndex dataIndex;
@@ -607,6 +645,13 @@ static void eraseRegion(flash_MemMang_t *pobj, ee_uint32 regionAddr)
 }
 
 
+/**
+ * @brief 将数据从活动区搬移到交换区
+ *
+ * @param pindex 搬移的索引结构
+ * @param newDataAddr 交换数据区的偏移地址
+ * @param newIndexAddr 交换索引区的地址
+ */
 static void transferDataAndIndex(flash_MemMang_t* pobj, ee_dataIndex* pindex, ee_uint32* newDataAddr, ee_uint32 newIndexAddr)
 {
 	ee_uint32 i;
@@ -632,6 +677,9 @@ static void transferDataAndIndex(flash_MemMang_t* pobj, ee_dataIndex* pindex, ee
 	*newDataAddr += i;
 }
 
+/**
+ * @brief 交换区域
+ */
 static void swapData(flash_MemMang_t* pobj)
 {
 	ee_uint32 i;
@@ -705,7 +753,6 @@ static void swapData(flash_MemMang_t* pobj)
  * @brief: 当数据区溢出或者数据索引区溢出时，都需要进行调换活动区
  * 索引区溢出或数据区溢出：调换数据区和数据索引区的活动区(最初想法如果只有索引区溢出只交换索引区
  * 这个方案可行但是会导致拥有4个区域状态，导致初始化代码复杂)
- * TODO :在交换区域后，将之前的 indexStartAddr 赋值为之前的 indexSwapStartAddr，而之前的indexSwapStartAddr 赋值为之前的 indexStartAddr，每交换一次操作执行一次此操作，这样做方便其他函数编写程序(程序专注于indexStartAddr，不必在意indexSwapStartAddr)
  */
 static void swapRegion(flash_MemMang_t* pobj)
 {
@@ -716,9 +763,9 @@ static void swapRegion(flash_MemMang_t* pobj)
 
 	switch(regionStatus)
 	{
-		/* 发现当前active交换区状态为copy，说明在拷贝数据时单片机终止运行 */
-		/* 发现当前active交换区状态为active，说明数据拷贝完，但是还没开始擦除的情况 */
-		/* 发现当前active交换区状态为erasing，说明区域可能被擦除了也可能在擦除时被终止了，因此都需要先验证是否完全被擦除 */
+		/* 发现当前区域active, 交换区状态为copy，说明在拷贝数据时单片机终止运行 */
+		/* 发现当前区域active, 交换区状态为active，说明数据拷贝完，但是还没开始擦除的情况 */
+		/* 发现当前区域active, 交换区状态为erasing，说明区域可能被擦除了也可能在擦除时被终止了，因此都需要先验证是否完全被擦除 */
 		case REGION_COPY: 
 		case REGION_ACTIVE:
 		case REGION_ERASING:

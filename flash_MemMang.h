@@ -1,5 +1,5 @@
 /**
- * @file spi_flash_MemMang.c
+ * @file spi_flash_MemMang.h
  * @author Donocean (1184427366@qq.com)
  * @brief 用于 flash 的内存管理
  * @version 1.0
