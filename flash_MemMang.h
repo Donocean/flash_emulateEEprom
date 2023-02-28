@@ -79,7 +79,7 @@ typedef enum
 }variableLists;
 
 /**
- * @brief 格式化传入函数地址flash
+ * @brief                      格式化传入函数地址flash
  *
  * @param pobj                 flash管理对象指针
  * @param indexStartAddr       总索引区起始地址
@@ -93,21 +93,6 @@ typedef enum
 void ee_flashInit(flash_MemMang_t* pobj,ee_uint32 indexStartAddr,ee_uint32 indexSwapStartAddr,ee_uint16 indexRegionSize,ee_uint16 indexSize,ee_uint32 dataStartAddr,ee_uint32 dataSwapStartAddr,ee_uint16 dataRegionSize);
 
 /**
- * @brief           写数据到flash
- *
- * @param pobj      flash管理对象指针
- * @param buf       写入数据的地址
- * @param bufSize   数据大小
- * @param dataId    要写入的数据id(详见头文件枚举类型variableLists)
- *
- * @retval 
- *         0: 写入成功
- *         1: 写入的数据超过索引区
- *         2: 当前写入的数据id，没有遵循variableLists中的顺序写入
- */
-ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists dataId);
-
-/**
  * @brief           从flash读取数据
  *
  * @param pobj      flash管理对象指针
@@ -119,6 +104,21 @@ ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists da
  *         1: 读取的数据超过索引区
  *         2: 当前读取的数据id没有写入过
  *         3: 当前读取的数据id不是有效的
+ */
+ee_uint8 ee_readDataFromFlash(flash_MemMang_t* pobj, void* buf, variableLists dataId);
+
+/**
+ * @brief           写数据到flash
+ *
+ * @param pobj      flash管理对象指针
+ * @param buf       写入数据的地址
+ * @param bufSize   数据大小
+ * @param dataId    要写入的数据id(详见头文件枚举类型variableLists)
+ *
+ * @retval 
+ *         0: 写入成功
+ *         1: 写入的数据超过索引区
+ *         2: 当前写入的数据id，没有遵循variableLists中的顺序写入
  */
 ee_uint8 ee_writeDataToFlash(flash_MemMang_t* pobj, void* buf, ee_uint16 bufSize, variableLists dataId);
 
