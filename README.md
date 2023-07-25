@@ -1,18 +1,18 @@
-# 轻量化的用于flash的空间管理程序
+# flash_emulateEEprom
 
-本程序用flash模拟eeprom的使用体验，同时你**不需要记住已经存入flash中的数据在flash内的地址**
+使用`flash`模拟`eeprom`的使用体验
 
-### 本程序特点：
+## 特点
 
 - 简单易用，只有**三个API函数**
 	- `void ee_flashInit()`：格式化flash，只有格式化后的flash才能使用后面两个api函数。
 	- `ee_uint8 ee_readDataFromFlash()`：读数据
 	- `ee_uint8 ee_writeDataToFlash();`：写数据
 - 容易维护，你只需要维护一个枚举变量表`variableLists`，通过此表读写flash中的数据
-- 可以**随意修改**已经存入flash中**数据的大小、内容**
+- 可以**随意更改**已经存入flash中**数据的大小、内容**
 - 支持**所有可以按字节写入的flash**(nor flash)，你可以使用此程序管理spi_flash或其他单片机芯片中的片内flash
 
-### 如何开始使用？
+## 如何开始使用？
 
 首先进入头文件，根据注释将**四个宏**填写完整
 - `SECTOR_SIZE`:  当前flash一个扇区(flash的最小存储单元)容量大小
@@ -42,11 +42,11 @@ typedef enum
 
 	// DATA_NUM用于标识flash中一共存了多少个数据(不允许删改)
 	DATA_NUM,
-}variableLists;
+} variableLists;
 
 //------------------主函数-------------
-/* flash内存管理句柄 */
-flash_MemMang_t g_fm;
+/* 创建flash内存管理句柄 */
+ee_flash_t g_fm;
 
 /* 想要存入flash中的变量 */
 int g_mySensorData = 16;
@@ -61,7 +61,14 @@ int main(void)
 	char tt[20];
 
 	/* 格式化传入地址的格式 */
-	ee_flashInit(&g_fm, SECTORS(0), SECTORS(2), 2, 1, SECTORS(4), SECTORS(5), 1);
+	ee_flashInit(&g_fm,       /* 管理句柄 */
+                 SECTORS(0),  /* 索引区起始地址 */
+                 SECTORS(2),  /* 交换索引区起始地址 */
+                 2,           /* 总索引区大小(单位：扇区) */
+                 1,           /* 索引区大小(详见README图例，indexRegionSize) */
+                 SECTORS(4),  /* 数据区起始地址 */
+                 SECTORS(5),  /* 交换数据区起始地址 */
+                 1);          /* 数据区大小(单位：扇区) */
 
 	/* 数据写入顺序错误，写入失败 */
 	ee_writeDataToFlash(&g_fm, &g_float, sizeof(g_float), G_FLOAT);
@@ -86,13 +93,13 @@ int main(void)
 }
 ```
 
-### 注意事项：
+## 注意事项：
 
 - 每个数据的大小**最大64KB**（可升级最大为4GB）
 - 每个区域的大小**最大64KB**（可升级最大为4GB）
 - 在写入数据时，你需要**按照枚举表中的顺序，从上往下依次写入**（主要为了快速寻址数据区空闲地址）
 
-### 基本原理
+## 基本原理
 
 flash只能将1变成0，只能通过擦除一整个扇区(flash的最小存储结构)才能将0变成1，因此对于一个被写过的地址，如果再次对其进行写入，必定会导致已经变成0的位无法变成1，从而导致数据无效。
 
