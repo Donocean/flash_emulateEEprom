@@ -45,7 +45,7 @@ typedef enum
 } variableLists;
 
 //------------------主函数-------------
-/* 创建flash内存管理句柄 */
+/* 创建flash管理句柄 */
 ee_flash_t g_fm;
 
 /* 想要存入flash中的变量 */
@@ -62,13 +62,13 @@ int main(void)
 
 	/* 格式化传入地址的格式 */
 	ee_flashInit(&g_fm,       /* 管理句柄 */
-                 SECTORS(0),  /* 索引区起始地址 */
-                 SECTORS(2),  /* 交换索引区起始地址 */
-                 2,           /* 总索引区大小(单位：扇区) */
-                 1,           /* 索引区大小(详见README图例，indexRegionSize) */
-                 SECTORS(4),  /* 数据区起始地址 */
-                 SECTORS(5),  /* 交换数据区起始地址 */
-                 1);          /* 数据区大小(单位：扇区) */
+		     SECTORS(0),  /* 索引区起始地址 */
+		     SECTORS(2),  /* 交换索引区起始地址 */
+		     2,           /* 总索引区大小(单位：扇区) */
+                     1,           /* 索引区大小(详见README图例，indexRegionSize) */
+                     SECTORS(4),  /* 数据区起始地址 */
+                     SECTORS(5),  /* 交换数据区起始地址 */
+                     1);          /* 数据区大小(单位：扇区) */
 
 	/* 数据写入顺序错误，写入失败 */
 	ee_writeDataToFlash(&g_fm, &g_float, sizeof(g_float), G_FLOAT);
